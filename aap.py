@@ -1,282 +1,76 @@
+# SYNAPSE NEON MUSIC PLAYER โ€” Streamlit
+from pathlib import Path
+import base64, html, json, mimetypes
 import streamlit as st
-from datetime import date
+import streamlit.components.v1 as components
 
-st.set_page_config(
-    page_title="MON101 Lunar Lab",
-    page_icon="🌙",
-    layout="wide"
-)
+EXTS={'.mp3','.wav','.ogg','.m4a','.aac','.opus','.flac'}
 
-PHI = 1.618
+def _track(item):
+    try:
+        if isinstance(item,dict):
+            title=item.get('title') or item.get('name') or item.get('เธเธทเนเธญเน€เธเธฅเธ') or 'เน€เธเธฅเธเนเธกเนเธกเธตเธเธทเนเธญ'
+            url=item.get('url') or item.get('src')
+            if url: return {'title':str(title),'src':str(url)}
+            item=item.get('path') or item.get('file_path') or item.get('file') or item.get('audio') or item.get('uploaded_file') or item.get('data')
+            if item is None:return None
+        if isinstance(item,(str,Path)):
+            p=Path(item)
+            if not p.is_file() or p.suffix.lower() not in EXTS:return None
+            name=p.name; raw=p.read_bytes()
+        elif isinstance(item,(bytes,bytearray)):
+            name='เน€เธเธฅเธ.mp3';raw=bytes(item)
+        elif hasattr(item,'getvalue'):
+            name=getattr(item,'name','เน€เธเธฅเธ.mp3');raw=item.getvalue()
+        elif hasattr(item,'read'):
+            name=getattr(item,'name','เน€เธเธฅเธ.mp3')
+            try:item.seek(0)
+            except Exception:pass
+            raw=item.read()
+            try:item.seek(0)
+            except Exception:pass
+        else:return None
+        mime=mimetypes.guess_type(name)[0] or 'audio/mpeg'
+        return {'title':Path(name).stem,'src':'data:'+mime+';base64,'+base64.b64encode(raw).decode('ascii')}
+    except Exception:return None
 
-st.markdown("""
-<style>
-.stApp {
-    background: #070912;
-    color: white;
-}
-h1, h2, h3 {
-    color: #00e5ff !important;
-}
-div[data-testid="stMetric"] {
-    background: #111827;
-    border: 1px solid #00bcd4;
-    padding: 14px;
-    border-radius: 12px;
-}
-</style>
-""", unsafe_allow_html=True)
+def _find_tracks(songs=None, folder='.'):
+    items=[]
+    if songs is not None: items.extend(list(songs) if isinstance(songs,(list,tuple)) else [songs])
+    root=Path(folder); seen_paths=set()
+    for d in (root,root/'music',root/'songs',root/'audio'):
+        if d.is_dir():
+            for p in sorted(d.iterdir(),key=lambda x:x.name.casefold()):
+                if p.is_file() and p.suffix.lower() in EXTS and str(p.resolve()) not in seen_paths:
+                    seen_paths.add(str(p.resolve()));items.append(p)
+    tracks=[];seen=set()
+    for item in items:
+        t=_track(item)
+        if t and t['src']:
+            key=(t['title'],len(t['src']))
+            if key not in seen:seen.add(key);tracks.append(t)
+    return tracks
 
-st.title("🌙 MON101 LUNAR LAB")
-st.subheader("ทดลองสูตรวันประจำสัปดาห์ + จันทรคติ + Golden Ratio 1.618")
+def render_music_player(songs=None, logo_path='logo1.jpg', title='SYNAPSE', folder='.'):
+    st.markdown('''<style>.stApp{background:radial-gradient(ellipse at 8% 12%,#00c4ff20,transparent 32%),radial-gradient(ellipse at 94% 32%,#ec00ff1e,transparent 30%),linear-gradient(135deg,#030611,#080c20 52%,#090416)}.synapse-title{text-align:center;font-size:clamp(28px,5vw,48px);font-weight:950;letter-spacing:3px;color:#fff;text-shadow:0 0 8px #00eaff,0 0 22px #007bff,0 0 38px #e500ff}.synapse-sub{text-align:center;color:#9cfaff;letter-spacing:3px;font-size:12px;margin-bottom:1rem}</style>''',unsafe_allow_html=True)
+    logo=Path(logo_path)
+    if logo.is_file():
+        a,b,c=st.columns([1,2,1])
+        with b:st.image(str(logo),use_container_width=True)
+    else:st.warning(f'เนเธกเนเธเธ {logo_path} โ€” เธงเธฒเธ logo1.jpg เนเธงเนเนเธเธฅเน€เธ”เธญเธฃเนเน€เธ”เธตเธขเธงเธเธฑเธ app.py')
+    st.markdown(f'<div class="synapse-title">{html.escape(title)}</div><div class="synapse-sub">SOUND & VISUAL THERAPY โ€ข NEON AUDIO EXPERIENCE</div>',unsafe_allow_html=True)
+    tracks=_find_tracks(songs,folder)
+    if not tracks:
+        st.error('เธขเธฑเธเนเธกเนเธเธเนเธเธฅเนเน€เธเธฅเธ เธเธฃเธธเธ“เธฒเธงเธฒเธเนเธเธฅเน MP3 เนเธงเนเนเธเธฅเน€เธ”เธญเธฃเนเน€เธ”เธตเธขเธงเธเธฑเธ app.py เธซเธฃเธทเธญเนเธเนเธเธฅเน€เธ”เธญเธฃเน music/')
+        st.code('from music import render_music_player\nrender_music_player(logo_path="logo1.jpg")',language='python');return
+    payload=json.dumps(tracks,ensure_ascii=False).replace('</','<\\/')
+    template=r'''<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+:root{color-scheme:dark;--cyan:#00eaff;--pink:#ff22d6;--violet:#863dff}*{box-sizing:border-box}body{margin:0;background:transparent;color:#f5f8ff;font-family:Arial,"Noto Sans Thai",sans-serif}.panel{position:relative;overflow:hidden;padding:19px;border-radius:24px;border:1px solid #00eaff9c;background:radial-gradient(ellipse at 0 0,#152c65,transparent 42%),radial-gradient(ellipse at 100% 100%,#3a124e,transparent 45%),linear-gradient(145deg,#030714,#080d20 60%,#100719);box-shadow:0 0 18px #00d9ff36,inset 0 0 28px #8c37ff1b}.inner{position:relative;z-index:1}.top{display:flex;align-items:center;gap:9px;margin-bottom:14px}.live{width:10px;height:10px;background:#67ffbd;border-radius:50%;box-shadow:0 0 12px #67ffbd;animation:blink 1.3s infinite alternate}@keyframes blink{to{opacity:.35}}.brand{font-size:11px;letter-spacing:2px;color:#9afaff;font-weight:900}.status{margin-left:auto;font-size:10px;color:#aab8d9}.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:15px}.nowbox{border:1px solid #863dff88;border-radius:18px;padding:15px;background:#080b1bc9}.eyebrow{font-size:10px;letter-spacing:2px;color:#ff82eb;margin-bottom:8px}.song{font-size:clamp(19px,4vw,27px);font-weight:900;line-height:1.35;overflow-wrap:anywhere;text-shadow:0 0 8px #00dfff,0 0 20px #743aff}.subline{text-align:center;font-size:11px;color:#9cadd2;margin-top:7px}.visual{height:88px;display:flex;align-items:center;justify-content:center;gap:4px;margin:10px 0 13px}.bar{width:4px;height:var(--h);max-height:78px;border-radius:8px;background:linear-gradient(0deg,#783bff,#00f0ff,#ff32d7);box-shadow:0 0 10px #00dfff;animation:beat var(--speed) ease-in-out infinite alternate;animation-play-state:paused}.playing .bar{animation-play-state:running}@keyframes beat{from{transform:scaleY(.22);opacity:.5}to{transform:scaleY(1);opacity:1}}.seek{width:100%;accent-color:#00eaff;filter:drop-shadow(0 0 4px #00eaff)}.times{display:flex;justify-content:space-between;color:#9badd2;font-size:11px}.controls{display:flex;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0}button{cursor:pointer;color:white;border:1px solid #00eaff9c;background:linear-gradient(135deg,#101a3a,#16102d);border-radius:14px;padding:10px 13px;transition:.2s}button:hover{border-color:#ff27d8;box-shadow:0 0 17px #ff27d855}.mainbtn{width:58px;height:58px;border-radius:50%;font-size:22px;background:linear-gradient(135deg,#00cfff,#763dff 60%,#ed28d5);box-shadow:0 0 18px #00cfff77}.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px}label{display:block;color:#9badd2;font-size:10px;letter-spacing:1px;margin:0 0 6px 3px}select{width:100%;padding:10px;color:#fff;background:#0c1430;border:1px solid #00dfff86;border-radius:12px}.vol{display:flex;align-items:center;gap:10px;margin:14px 0;color:#aab9d8;font-size:12px}.vol input{flex:1;accent-color:#ff27d8}.listhead{display:flex;justify-content:space-between;color:#91faff;font-weight:900;font-size:11px;letter-spacing:2px;margin:17px 0 8px}.search{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #753fff9c;background:#080d20;color:white;margin-bottom:9px}.playlist{display:flex;flex-direction:column;gap:6px;max-height:230px;overflow:auto}.track{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px;border:1px solid #243259;background:#080e22;border-radius:11px}.track.active{border-color:#ff2bd6;background:#21113b;box-shadow:0 0 13px #ff27d52c}.num{min-width:23px;color:#00eaff;font-size:11px}.trackname{flex:1;overflow-wrap:anywhere;font-size:12px}.playingtag{font-size:9px;color:#ff7ce8}.mixer{border:1px solid #ff29d580;border-radius:17px;padding:14px;margin-top:14px;background:linear-gradient(120deg,#0a1024,#130a26)}.mixhead{font-size:12px;color:#ff8bf0;letter-spacing:3px;font-weight:900;margin-bottom:12px}.mixgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.mixitem{text-align:center;color:#aebcdb;font-size:10px}.mixitem input{width:100%;accent-color:#ff29d8}.mixval{color:#8cfaff;font-size:10px;margin-top:4px}.speakerrow{display:flex;justify-content:space-between;margin-top:10px;color:#8cfaff;font-size:12px}.note{text-align:center;color:#667ba6;font-size:10px;margin-top:14px}@media(min-width:650px){.layout{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr)}}@media(max-width:420px){.panel{padding:12px}.opts{grid-template-columns:1fr}.controls{gap:7px}.mixgrid{gap:5px}}
+</style></head><body><div class="panel" id="panel"><div class="inner"><div class="top"><span class="live"></span><span class="brand">SYNAPSE โ€ข SOUND & VISUAL THERAPY</span><span class="status" id="status">READY</span></div><div class="layout"><section class="nowbox"><div class="eyebrow">โซ NOW PLAYING / เธเธณเธฅเธฑเธเน€เธฅเนเธ</div><div class="song" id="songTitle">เน€เธ•เธฃเธตเธขเธกเน€เธเธฅเธ...</div><div class="subline" id="counter"></div><div class="visual" id="visual"></div><audio id="audio" preload="metadata"></audio><input class="seek" id="seek" type="range" min="0" max="1000" value="0"><div class="times"><span id="elapsed">0:00</span><span id="duration">0:00</span></div><div class="controls"><button id="prev">โฎ</button><button class="mainbtn" id="toggle">โ–ถ</button><button id="next">โญ</button><button id="restart">โป</button></div><div class="opts"><div><label for="mode">PLAY MODE โ€ข เนเธซเธกเธ”เน€เธฅเนเธ</label><select id="mode"><option value="continuous">โ–ถ เธ•เนเธญเน€เธเธทเนเธญเธเธ•เธฒเธกเธฅเธณเธ”เธฑเธ</option><option value="shuffle">๐”€ เธชเธธเนเธกเน€เธเธฅเธเธ•เนเธญเน€เธเธทเนเธญเธ</option><option value="single">โ–  เน€เธเธฅเธเน€เธ”เธตเธขเธงเนเธฅเนเธงเธซเธขเธธเธ”</option><option value="repeat">๐” เธงเธเน€เธเธฅเธเน€เธ”เธดเธก</option></select></div><div><label for="pick">SELECT TRACK โ€ข เน€เธฅเธทเธญเธเน€เธเธฅเธ</label><select id="pick"></select></div></div><div class="vol"><span>๐”</span><span>VOLUME</span><input id="volume" type="range" min="0" max="100" value="80"><span id="volvalue">80%</span></div></section><section><div class="listhead"><span>โซ PLAYLIST</span><span id="total"></span></div><input class="search" id="search" placeholder="โ• เธเนเธเธซเธฒเธเธทเนเธญเน€เธเธฅเธ..." autocomplete="off"><div class="playlist" id="playlist"></div><div class="mixer"><div class="mixhead">ใ€ฐ NEON MIXER</div><div class="mixgrid"><div class="mixitem">BASS<input id="bass" type="range" min="0" max="100" value="65"><div class="mixval" id="bassval">65%</div></div><div class="mixitem">MID<input id="mid" type="range" min="0" max="100" value="50"><div class="mixval" id="midval">50%</div></div><div class="mixitem">TREBLE<input id="treble" type="range" min="0" max="100" value="75"><div class="mixval" id="trebleval">75%</div></div><div class="mixitem">GLOW<input id="glow" type="range" min="0" max="100" value="80"><div class="mixval" id="glowval">80%</div></div></div><div class="speakerrow"><span>๐” SPEAKER MODE</span><span id="speakerstate">NEON ON</span></div></div></section></div><div class="note">NEON AUDIO EXPERIENCE โ€ข เน€เธฅเธทเธญเธเน€เธเธฅเธเนเธฅเนเธงเธเธ” โ–ถ เน€เธเธทเนเธญเน€เธฃเธดเนเธกเธเธฑเธ</div></div></div><script>
+const tracks=__TRACKS__;const $=id=>document.getElementById(id),audio=$('audio'),panel=$('panel');let index=0,seeking=false;for(let i=0;i<43;i++){let b=document.createElement('span');b.className='bar';b.style.setProperty('--h',(8+Math.abs(Math.sin(i*1.55))*70)+'px');b.style.setProperty('--speed',(.25+(i%9)*.075)+'s');b.style.animationDelay=(-i*.05)+'s';$('visual').appendChild(b)}function fmt(v){if(!Number.isFinite(v)||v<0)return'0:00';return Math.floor(v/60)+':'+String(Math.floor(v%60)).padStart(2,'0')}function status(t){$('status').textContent=t}function render(){$('pick').innerHTML='';tracks.forEach((t,i)=>{let o=document.createElement('option');o.value=i;o.textContent=(i+1)+'. '+t.title;$('pick').appendChild(o)});$('total').textContent=tracks.length+' TRACKS';drawList()}function drawList(){let q=$('search').value.trim().toLocaleLowerCase();$('playlist').innerHTML='';tracks.forEach((t,i)=>{if(q&&!t.title.toLocaleLowerCase().includes(q))return;let b=document.createElement('button');b.className='track'+(i===index?' active':'');let n=document.createElement('span');n.className='num';n.textContent=String(i+1).padStart(2,'0');let name=document.createElement('span');name.className='trackname';name.textContent=t.title;let tag=document.createElement('span');tag.className='playingtag';tag.textContent=i===index?'NOW PLAYING':'โ–ถ';b.append(n,name,tag);b.addEventListener('click',()=>{load(i);play()});$('playlist').appendChild(b)})}function load(i,autoplay=false){index=(i+tracks.length)%tracks.length;audio.src=tracks[index].src;audio.load();$('songTitle').textContent=tracks[index].title;$('counter').textContent='TRACK '+(index+1)+' / '+tracks.length;$('pick').value=String(index);$('seek').value=0;$('elapsed').textContent='0:00';$('duration').textContent='0:00';drawList();if(autoplay)play();else{status('READY');$('toggle').textContent='โ–ถ';panel.classList.remove('playing')}}async function play(){try{await audio.play();$('toggle').textContent='โ…ก';status('PLAYING');panel.classList.add('playing')}catch(e){status('เธเธ” โ–ถ เน€เธเธทเนเธญเน€เธฅเนเธ');$('toggle').textContent='โ–ถ'}}function pause(){audio.pause();$('toggle').textContent='โ–ถ';status('PAUSED');panel.classList.remove('playing')}function next(){let m=$('mode').value;if(m==='single'){audio.pause();audio.currentTime=0;$('seek').value=0;$('toggle').textContent='โ–ถ';status('FINISHED');panel.classList.remove('playing');return}if(m==='repeat'){audio.currentTime=0;play();return}let n=index;if(m==='shuffle'&&tracks.length>1){do{n=Math.floor(Math.random()*tracks.length)}while(n===index)}else n=index+1;if(n>=tracks.length){if(m==='continuous')n=0;else{audio.pause();audio.currentTime=0;status('PLAYLIST END');panel.classList.remove('playing');return}}load(n,true)}$('toggle').onclick=()=>audio.paused?play():pause();$('prev').onclick=()=>load(index-1,true);$('next').onclick=next;$('restart').onclick=()=>{audio.currentTime=0;play()};$('pick').onchange=()=>load(Number($('pick').value),true);$('search').oninput=drawList;audio.onended=next;audio.ontimeupdate=()=>{if(!seeking&&audio.duration>0)$('seek').value=Math.round(audio.currentTime/audio.duration*1000);$('elapsed').textContent=fmt(audio.currentTime);$('duration').textContent=fmt(audio.duration)};$('seek').oninput=()=>seeking=true;$('seek').onchange=()=>{if(audio.duration>0)audio.currentTime=Number($('seek').value)/1000*audio.duration;seeking=false};$('volume').oninput=e=>{audio.volume=Number(e.target.value)/100;$('volvalue').textContent=e.target.value+'%'};audio.volume=.8;['bass','mid','treble','glow'].forEach(id=>$(id).oninput=e=>{$(id+'val').textContent=e.target.value+'%';if(id==='glow'){let v=Number(e.target.value)/100;panel.style.boxShadow='0 0 '+(8+v*24)+'px rgba(0,220,255,'+(v*.35)+'),inset 0 0 28px rgba(140,55,255,'+(v*.14)+')'}});render();load(0,false);
+</script></body></html>'''
+    components.html(template.replace('__TRACKS__',payload),height=1040,scrolling=True)
 
-st.info(
-    "เลือกวันที่ โปรแกรมจะพยายามหาวันข้างขึ้น/ข้างแรม "
-    "จากปฏิทินจันทรคติไทยโดยอัตโนมัติ"
-)
-
-selected_date = st.date_input(
-    "เลือกวัน เดือน ปี",
-    value=date.today(),
-    format="DD/MM/YYYY"
-)
-
-# วันจันทร์ = 1 ... วันอาทิตย์ = 7
-weekday_number = selected_date.weekday() + 1
-
-weekday_names = {
-    1: "วันจันทร์",
-    2: "วันอังคาร",
-    3: "วันพุธ",
-    4: "วันพฤหัสบดี",
-    5: "วันศุกร์",
-    6: "วันเสาร์",
-    7: "วันอาทิตย์",
-}
-
-month_names = [
-    "มกราคม", "กุมภาพันธ์", "มีนาคม",
-    "เมษายน", "พฤษภาคม", "มิถุนายน",
-    "กรกฎาคม", "สิงหาคม", "กันยายน",
-    "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
-]
-
-st.markdown("## 📅 ข้อมูลวันที่")
-
-c1, c2, c3 = st.columns(3)
-
-c1.metric(
-    "วันประจำสัปดาห์",
-    weekday_names[weekday_number]
-)
-
-c2.metric(
-    "เลขประจำวัน",
-    weekday_number
-)
-
-c3.metric(
-    "วันที่",
-    f"{selected_date.day} "
-    f"{month_names[selected_date.month - 1]} "
-    f"{selected_date.year + 543}"
-)
-
-# อ่านวันจันทรคติไทย
-lunar_phase = None
-lunar_day = None
-lunar_text = ""
-
-try:
-    from pythainlp.util import to_lunar_date
-
-    lunar_text = str(
-        to_lunar_date(selected_date)
-    )
-
-    import re
-
-    match = re.search(
-        r"(ขึ้น|แรม)\s*(\d+)\s*ค่ำ",
-        lunar_text
-    )
-
-    if match:
-        lunar_phase = match.group(1)
-        lunar_day = int(match.group(2))
-
-except Exception:
-    lunar_text = ""
-
-st.markdown("---")
-st.markdown("## 🌙 ข้อมูลข้างขึ้น / ข้างแรม")
-
-if lunar_phase and lunar_day is not None:
-    st.success(
-        f"วันที่เลือก: {lunar_text}"
-    )
-
-    st.write(
-        f"ข้าง: **{lunar_phase}**"
-    )
-
-    st.write(
-        f"เลขวันค่ำ: **{lunar_day}**"
-    )
-
-else:
-    st.warning(
-        "โปรแกรมอ่านวันจันทรคติอัตโนมัติไม่ได้ "
-        "กรุณาติดตั้ง pythainlp หรือตรวจสอบรูปแบบข้อมูล"
-    )
-
-    manual_phase = st.radio(
-        "เลือกข้างจันทรคติ",
-        ["ขึ้น", "แรม"],
-        horizontal=True
-    )
-
-    manual_day = st.number_input(
-        "เลขวันค่ำ",
-        min_value=1,
-        max_value=15,
-        value=5,
-        step=1
-    )
-
-    lunar_phase = manual_phase
-    lunar_day = int(manual_day)
-
-st.markdown("---")
-st.markdown("## 🧪 วิธีที่ 1: บวกหรือลบวันค่ำ")
-
-st.write(
-    f"วันประจำสัปดาห์ = {weekday_number}"
-)
-
-st.write(
-    f"เลขวันค่ำ = {lunar_day}"
-)
-
-if lunar_phase == "ขึ้น":
-    result_1 = weekday_number - lunar_day
-    expression_1 = (
-        f"{weekday_number} - {lunar_day}"
-    )
-else:
-    result_1 = weekday_number + lunar_day
-    expression_1 = (
-        f"{weekday_number} + {lunar_day}"
-    )
-
-st.code(
-    f"{expression_1} = {result_1}"
-)
-
-st.metric(
-    "ผลลัพธ์วิธีที่ 1",
-    f"{result_1}"
-)
-
-st.markdown("---")
-st.markdown("## 🔢 วิธีที่ 2: จับตัวเลขมาต่อกัน")
-
-result_2 = int(
-    f"{weekday_number}{lunar_day}"
-)
-
-st.write(
-    f"เลขวันประจำสัปดาห์ = {weekday_number}"
-)
-
-st.write(
-    f"เลขวันค่ำ = {lunar_day}"
-)
-
-st.code(
-    f"{weekday_number} ต่อกับ {lunar_day}"
-    f" = {result_2}"
-)
-
-st.metric(
-    "ผลลัพธ์วิธีที่ 2",
-    f"{result_2}"
-)
-
-st.markdown("---")
-st.markdown("## 🌀 ทดลองค่าคงที่ Golden Ratio 1.618")
-
-st.caption(
-    "ทดลองทั้งการหารและการคูณ "
-    "โดยใช้ผลลัพธ์จากแต่ละวิธี"
-)
-
-for title, value in [
-    ("วิธีที่ 1", result_1),
-    ("วิธีที่ 2", result_2),
-]:
-    st.markdown(f"### {title}")
-
-    a, b = st.columns(2)
-
-    divided = value / PHI
-    multiplied = value * PHI
-
-    with a:
-        st.write(
-            f"{value} ÷ {PHI}"
-        )
-        st.metric(
-            "ผลหาร",
-            f"{divided:.8f}"
-        )
-
-    with b:
-        st.write(
-            f"{value} × {PHI}"
-        )
-        st.metric(
-            "ผลคูณ",
-            f"{multiplied:.8f}"
-        )
-
-    st.divider()
-
-st.markdown("## 📋 สรุปผลทั้งสองวิธี")
-
-st.dataframe(
-    [
-        {
-            "วิธี": "วิธีที่ 1",
-            "สูตร": expression_1,
-            "ผลก่อนใช้ 1.618": result_1,
-            "หาร 1.618": round(
-                result_1 / PHI, 8
-            ),
-            "คูณ 1.618": round(
-                result_1 * PHI, 8
-            ),
-        },
-        {
-            "วิธี": "วิธีที่ 2",
-            "สูตร": (
-                f"{weekday_number}"
-                f" ต่อกับ {lunar_day}"
-            ),
-            "ผลก่อนใช้ 1.618": result_2,
-            "หาร 1.618": round(
-                result_2 / PHI, 8
-            ),
-            "คูณ 1.618": round(
-                result_2 * PHI, 8
-            ),
-        },
-    ],
-    use_container_width=True,
-    hide_index=True
-)
-
-st.caption(
-    "MON101 LUNAR LAB — ใช้สำหรับทดลองสูตร "
-    "ผลคำนวณไม่ได้รับประกันผลหวย"
-    )
+if __name__ == '__main__':
+    st.set_page_config(page_title='SYNAPSE Music Player',page_icon='๐ง',layout='wide')
+    render_music_player(logo_path='logo1.jpg')
